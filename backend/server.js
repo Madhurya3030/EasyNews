@@ -5,6 +5,9 @@ const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const passport = require('passport');
 const connectDB = require('./config/db');
+const newsRoutes = require("./routes/news");
+const recommendRoutes = require("./routes/recommend");
+const activityRoutes = require("./routes/userActivity");
 
 // Connect to database
 connectDB();
@@ -23,7 +26,8 @@ app.use(
     credentials: true,
   })
 );
-
+app.use("/api/news", newsRoutes);
+app.use("/api/recommend", recommendRoutes);
 // Session middleware
 app.use(session({
   secret: process.env.JWT_SECRET || 'easynews_secret',
@@ -35,6 +39,7 @@ app.use(session({
 // Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
+app.use("/api/activity", activityRoutes);
 
 // Routes
 const authRouter = require('./routes/authRoutes');

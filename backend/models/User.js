@@ -33,7 +33,10 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  readHistory: [{ type: mongoose.Schema.Types.ObjectId, ref: "Article" }],
+likedArticles: [{ type: mongoose.Schema.Types.ObjectId, ref: "Article" }],
+savedArticles: [{ type: mongoose.Schema.Types.ObjectId, ref: "Article" }],
 });
 
 // Match user entered password to hashed password in database

@@ -1,50 +1,81 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import NewsCard from '../components/NewsCard';
-
-const dummyNews = [
-  {
-    id: 1,
-    title: "AI Breakthrough: Generative Models Reach New Heights",
-    summary: "Researchers have announced a significant milestone in generative AI, enabling models to reason and create more cohesive narratives than ever before. This opens up new possibilities for automation and creativity across multiple industries.",
-    image: "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&q=80&w=1000",
-    category: "Technology"
-  },
-  {
-    id: 2,
-    title: "Global Markets Rally as Tech Stocks Surge",
-    summary: "Major indices hit all-time highs today, driven by strong earnings from leading technology companies and optimistic economic forecasts for the upcoming quarter.",
-    image: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&q=80&w=1000",
-    category: "Finance"
-  },
-  {
-    id: 3,
-    title: "SpaceX Successfully Launches New Satellite Constellation",
-    summary: "The latest mission adds another 60 satellites to the growing network, expanding global internet coverage to remote areas and pushing the boundaries of commercial spaceflight.",
-    image: "https://images.unsplash.com/photo-1517976487492-5750f3195933?auto=format&fit=crop&q=80&w=1000",
-    category: "Science"
-  },
-  {
-    id: 4,
-    title: "Revolutionary Solid-State Battery Powers EV for 1,000 Miles",
-    summary: "A new breakthrough in battery technology has successfully powered an electric vehicle for over 1,000 miles on a single charge, potentially eliminating range anxiety forever.",
-    image: "https://images.unsplash.com/photo-1593941707882-a5bba14938c7?auto=format&fit=crop&q=80&w=1000",
-    category: "Automotive"
-  },
-  {
-    id: 5,
-    title: "Global Summit Agrees on Strict Carbon Emission Targets",
-    summary: "Leaders from 195 nations have reached a historic agreement to dramatically cut carbon emissions by 2030, introducing penalties for non-compliance and massive green energy funds.",
-    image: "https://images.unsplash.com/photo-1470071131384-001b85755b36?auto=format&fit=crop&q=80&w=1000",
-    category: "Environment"
-  }
-];
+import { useAuth } from '../context/AuthContext';
 
 export default function News() {
+  const [articles, setArticles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const { user } = useAuth();
+
+  useEffect(() => {
+    // Load recent articles immediately (guest mode)
+    fetchRecentArticles();
+  }, []);
+
+  const fetchRecentArticles = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/news/recent');
+      if (!res.ok) throw new Error('Recent fetch failed');
+      const data = await res.json();
+      console.log("✅ Recent Articles:", data);
+      const formatted = data.map((item, index) => ({
+        id: index,
+        articleId: item._id,
+        title: item.title,
+        summary: item.description,
+        image: item.image || '/vite.svg',
+        category: item.category,
+        url: item.url
+      }));
+      setArticles(formatted);
+    } catch (err) {
+      console.error("❌ Recent error:", err);
+      setError('No articles available. Try populating DB.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load personalized if user logged in
+  useEffect(() => {
+    if (!user?._id) return;
+
+    fetch(`http://localhost:5000/api/recommend`, {
+      credentials: 'include',
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`Recommend ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        console.log("✅ Personalized:", data);
+        if (data.length > 0) {
+          const formatted = data.map((item, index) => ({
+            id: index,
+            articleId: item._id,
+            title: item.title,
+            summary: item.description,
+            image: item.image,
+            category: item.category,
+            url: item.url
+          }));
+          setArticles(formatted);
+        }
+      })
+      .catch(err => console.error("Personalized fallback:", err));
+  }, [user?._id]);
+
+  if (loading) return <div className="flex items-center justify-center h-screen text-white text-xl">Loading news...</div>;
+  if (error) return <div className="text-red-400 text-center mt-20 p-8 bg-red-500/10 rounded">{error}</div>;
+  if (articles.length === 0) return <div className="text-gray-400 text-center mt-20">No news. <a href="http://localhost:5000/api/news/fetch-news" className="underline">Populate DB</a></div>;
+
   return (
     <div className="w-full h-full bg-black overflow-y-scroll snap-y snap-mandatory no-scrollbar relative">
-      {dummyNews.map((news) => (
-        <NewsCard key={news.id} news={news} />
+      {articles.map((news) => (
+        <NewsCard key={news.id} news={news} userId={user?._id} />
       ))}
     </div>
   );
 }
+
