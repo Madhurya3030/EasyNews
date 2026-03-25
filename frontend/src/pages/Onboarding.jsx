@@ -6,12 +6,16 @@ import axiosClient from '../api/axiosClient';
 
 const INTERESTS = [
   'Technology',
+  'Business',
   'Finance',
   'Startups',
   'Economy',
-  'Sports',
   'Politics',
-  'Entertainment'
+  'Sports',
+  'Entertainment',
+  'Health',
+  'Science',
+  'General'
 ];
 
 const LANGUAGES = ['English', 'Hindi', 'Spanish', 'French'];

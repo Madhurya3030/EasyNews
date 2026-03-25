@@ -6,6 +6,10 @@ import News from './pages/News';
 import SplashScreen from './pages/SplashScreen';
 import AuthPage from './pages/AuthPage';
 import Onboarding from './pages/Onboarding';
+import ActivityPage from './pages/Activity';
+import ArticlePage from "./pages/ArticlePage";
+import Trending from './pages/Trending';
+import Profile from './pages/Profile';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -55,6 +59,32 @@ function App() {
               </DashboardLayout>
             </ProtectedRoute>
           } />
+          <Route path="/activity" element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <ActivityPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/trending" element={
+  <ProtectedRoute>
+    <DashboardLayout>
+      <Trending />
+    </DashboardLayout>
+  </ProtectedRoute>
+} />
+         
+  <Route path="/profile" element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <Profile />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+    <Route path="/article/:id" element={<ArticlePage />} />
+  
+
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

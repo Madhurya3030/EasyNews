@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   FaHeart, FaRegHeart, 
@@ -12,8 +12,69 @@ export default function NewsCard({ news, userId }) {
   const [liked, setLiked] = useState(false);
   const [disliked, setDisliked] = useState(false);
   const [saved, setSaved] = useState(false);
+const [likeCount, setLikeCount] = useState(news?.likeCount || 0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
+  const [showComments, setShowComments] = useState(false);
+const [commentText, setCommentText] = useState("");
+const [copied, setCopied] = useState(false);
 
   // const userId = "69be294c60564a42b2e1a733"; // ✅ your user id
+
+
+const handleCommentSubmit = async () => {
+  if (!commentText.trim()) return;
+
+  try {
+    await fetch("http://localhost:5000/api/activity/comment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        articleId: news.articleId,
+        commentText: commentText,
+         title: news.title,
+  description: news.description,
+  image: news.image,
+  url: news.url
+      }),
+    });
+
+    setCommentText(""); // clear input
+    setCommentCount(prev => prev + 1); // 🔥 instant update
+
+  } catch (err) {
+    console.error("Comment error:", err);
+  }
+};
+
+
+const handleShare = async (e) => {
+  e.stopPropagation();
+
+  const appUrl = `http://localhost:3000/article/${news.articleId}`;
+
+  const shareData = {
+    title: news.title,
+    text: news.summary,
+    url: appUrl
+  };
+
+  try {
+    if (navigator.share) {
+      await navigator.share(shareData);
+    } else {
+      await navigator.clipboard.writeText(appUrl);
+
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  } catch (err) {
+    console.error("Share failed:", err);
+  }
+};
 
   // 🔥 TRACK READ
  const handleRead = () => {
@@ -24,40 +85,149 @@ export default function NewsCard({ news, userId }) {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      userId,
-      articleId: news.articleId
-    }),
+    credentials: "include",
+    body: JSON.stringify({ 
+  articleId: news.articleId,
+  userId: userId,
+  title: news.title,
+  description: news.description,
+  image: news.image,
+  url: news.url
+}),
   });
 
   window.open(news.url, "_blank");
-};
+ };
 
-  // 🔥 TRACK LIKE
-  const handleLike = (e) => {
-    e.stopPropagation();
+  // Initialize like state and count
+  useEffect(() => {
+    const initLikes = async () => {
+      if (!userId || !news.articleId) return;
+      
+      try {
+        const [statusRes, countRes] = await Promise.all([
+          fetch(`http://localhost:5000/api/activity/like/${news.articleId }/status`, {
+            credentials: 'include'
+          }),
+          fetch(`http://localhost:5000/api/activity/like/${news.articleId }/count`, {      credentials: 'include'     })     ]);
+        
+        if (statusRes.ok) {
+          const { liked } = await statusRes.json();
+          setLiked(liked);
+        }
+        
+        if (countRes.ok) {
+          const { count } = await countRes.json();
+          setLikeCount(count);
+        }
+      } catch (error) {
+        console.error('Failed to init like state:', error);
+      }
+    };
+    
+    initLikes();
+  }, [userId, news?.articleId]);
 
-    setLiked(!liked);
-    if (disliked) setDisliked(false);
+useEffect(() => {
+  setLikeCount(news?.likeCount || 0);
+}, [news]);
 
-    fetch("http://localhost:5000/api/activity/like", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        userId,
-        articleId: news.articleId
-      }),
-    });
+useEffect(() => {
+  const fetchCommentCount = async () => {
+    if (!news.articleId) return;
+
+    try {
+      const res = await fetch(
+        `http://localhost:5000/api/activity/comment/${news.articleId}/count`
+      );
+
+      const data = await res.json();
+
+      setCommentCount(prev => prev + 1);
+
+    } catch (err) {
+      console.error("Comment count error:", err);
+    }
   };
 
-  // 🔥 TRACK DISLIKE (optional UI only)
+  fetchCommentCount();
+}, [news.articleId]);
+
+
+
+// 🔥 TRACK LIKE
+     const handleLike = async (e) => {
+  e.stopPropagation();
+  console.log("USER ID:", userId);
+console.log("ARTICLE ID:", news.articleId );
+  if (!userId || isLoading) return;
+
+  setIsLoading(true);
+
+  const newLiked = !liked;
+  const delta = newLiked ? 1 : -1;
+
+  // Optimistic UI
+  setLiked(newLiked);
+  setLikeCount(prev => Math.max(0, prev + delta));
+
+  try {
+    const response = await fetch("http://localhost:5000/api/activity/like", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ 
+  articleId: news.articleId,
+  userId: userId,
+    title: news.title,
+  description: news.description,
+  image: news.image,
+  url: news.url
+})
+    });
+
+    if (!response.ok) throw new Error("Toggle failed");
+
+    // Fetch real count
+    const countRes = await fetch(
+      `http://localhost:5000/api/activity/like/${news.articleId }/count`,
+      { credentials: "include" }
+    );
+
+    const data = await countRes.json();
+    setLikeCount(data.count);
+
+  } catch (error) {
+    // Rollback
+    setLiked(!newLiked);
+    setLikeCount(prev => Math.max(0, prev - delta));
+    console.error("Like error:", error);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+// 🔥 TRACK DISLIKE
   const handleDislike = (e) => {
     e.stopPropagation();
 
     setDisliked(!disliked);
-    if (liked) setLiked(false);
+    if (liked) {
+  setLiked(false);
+  setLikeCount(prev => Math.max(0, prev - 1)); // 🔥 ADD THIS
+}
+
+    fetch("http://localhost:5000/api/activity/dislike", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+       articleId: news.articleId
+      }),
+
+    });
   };
 
   // 🔥 TRACK SAVE
@@ -71,16 +241,21 @@ export default function NewsCard({ news, userId }) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        userId,
-        articleId: news.articleId
-      }),
-    });
+      credentials: "include",
+    body: JSON.stringify({
+      articleId: news.articleId,
+       title: news.title,
+  description: news.description,
+  image: news.image,
+  url: news.url
+    }),
+  });
   };
 
-  return (
+return (
+  <>
     <div 
-      onClick={handleRead} // ✅ TRACK READ HERE
+      onClick={handleRead}
       className="w-full h-full snap-start relative bg-black shrink-0 flex justify-center items-center overflow-hidden cursor-pointer"
     >
       
@@ -106,27 +281,56 @@ export default function NewsCard({ news, userId }) {
         {/* Right Panel */}
         <div className="absolute right-4 bottom-24 md:bottom-32 flex flex-col items-center gap-6 z-10">
           
-          <button onClick={handleLike} className="flex flex-col items-center group">
+          {/* LIKE */}
+          <button 
+            onClick={handleLike} 
+            disabled={isLoading}
+            className="flex flex-col items-center group disabled:opacity-50"
+          >
             <div className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center group-hover:scale-110">
-              {liked ? <FaHeart className="text-red-500 text-2xl" /> : <FaRegHeart className="text-white text-2xl" />}
+              {isLoading ? (
+                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : liked ? (
+                <FaHeart className="text-red-500 text-2xl" />
+              ) : (
+                <FaRegHeart className="text-white text-2xl" />
+              )}
             </div>
-            <span className="text-white text-xs mt-1">12k</span>
+            <span className="text-white text-xs mt-1">
+              {likeCount.toLocaleString()}
+            </span>
           </button>
-          
-          <button onClick={handleDislike} className="flex flex-col items-center group">
+
+          {/* DISLIKE */}
+          <button 
+            onClick={handleDislike} 
+            className="flex flex-col items-center group"
+          >
             <div className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center group-hover:scale-110">
-              {disliked ? <FaThumbsDown className="text-blue-500 text-2xl" /> : <FaRegThumbsDown className="text-white text-2xl" />}
+              {disliked 
+                ? <FaThumbsDown className="text-blue-500 text-2xl" /> 
+                : <FaRegThumbsDown className="text-white text-2xl" />}
             </div>
             <span className="text-white text-xs mt-1">Dislike</span>
           </button>
 
-          <button className="flex flex-col items-center group">
+          {/* COMMENT */}
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowComments(true);
+            }}
+            className="flex flex-col items-center group"
+          >
             <div className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center group-hover:scale-110">
               <FaComment className="text-white text-2xl" />
             </div>
-            <span className="text-white text-xs mt-1">842</span>
+            <span className="text-white text-xs mt-1">
+              {commentCount.toLocaleString()}
+            </span>
           </button>
 
+          {/* AI */}
           <button className="flex flex-col items-center group">
             <div className="w-12 h-12 bg-purple-600/50 rounded-full flex items-center justify-center group-hover:scale-110">
               <FaRobot className="text-purple-200 text-2xl" />
@@ -134,6 +338,7 @@ export default function NewsCard({ news, userId }) {
             <span className="text-purple-200 text-xs mt-1">AI</span>
           </button>
 
+          {/* TRANSLATE */}
           <button className="flex flex-col items-center group">
             <div className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center group-hover:scale-110">
               <FaGlobe className="text-white text-2xl" />
@@ -141,12 +346,18 @@ export default function NewsCard({ news, userId }) {
             <span className="text-white text-xs mt-1">Translate</span>
           </button>
 
-          <button className="flex flex-col items-center group">
-            <div className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center group-hover:scale-110">
-              <FaShare className="text-white text-2xl" />
-            </div>
-            <span className="text-white text-xs mt-1">Share</span>
-          </button>
+          {/* SHARE */}
+         <button 
+  onClick={handleShare}
+  className="flex flex-col items-center group"
+>
+  <div className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center group-hover:scale-110">
+    <FaShare className="text-white text-2xl" />
+  </div>
+  <span className="text-green-400 text-xs mt-1">
+  {copied ? "Copied!" : "Share"}
+</span>
+</button>
         </div>
 
         {/* Bottom Content */}
@@ -164,7 +375,6 @@ export default function NewsCard({ news, userId }) {
             {news.summary || "No description available"}
           </p>
 
-          {/* Prevent double click */}
           <a 
             href={news.url} 
             target="_blank" 
@@ -176,7 +386,8 @@ export default function NewsCard({ news, userId }) {
           </a>
 
           <div className="mt-4 flex items-center">
-            <button onClick={handleSave}
+            <button 
+              onClick={handleSave}
               className={`flex items-center gap-2 px-4 py-2 rounded-full border ${
                 saved 
                   ? 'bg-white text-black' 
@@ -193,5 +404,44 @@ export default function NewsCard({ news, userId }) {
 
       </motion.div>
     </div>
-  );
+
+    {/* COMMENT MODAL */}
+    {showComments && (
+  <div 
+    className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+    onClick={() => setShowComments(false)}
+  >
+    <div 
+      className="w-[90%] max-w-md bg-zinc-900 rounded-2xl p-4 shadow-xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      
+      {/* Header */}
+      <h3 className="text-white text-lg font-semibold mb-3 text-center">
+        Comments
+      </h3>
+
+      {/* Input Section */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          placeholder="Write a comment..."
+          className="flex-1 bg-black/50 text-white px-3 py-2 rounded-lg outline-none text-sm"
+        />
+
+        <button
+          onClick={handleCommentSubmit}
+          className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-lg text-white text-sm"
+        >
+          Send
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
+  </>
+);
 }
