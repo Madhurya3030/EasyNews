@@ -18,9 +18,190 @@ const [likeCount, setLikeCount] = useState(news?.likeCount || 0);
   const [showComments, setShowComments] = useState(false);
 const [commentText, setCommentText] = useState("");
 const [copied, setCopied] = useState(false);
+const [summary, setSummary] = useState("");
+const [loadingAI, setLoadingAI] = useState(false);
+const [showAI, setShowAI] = useState(false);
+const [aiMessages, setAiMessages] = useState([]);
+const [input, setInput] = useState("");
+
+const [isSpeaking, setIsSpeaking] = useState(false);
+const [selectedLang, setSelectedLang] = useState("Hindi");
+
+
+
+
+const handleSmartAI = async (mode) => {
+  setAiMessages(prev => [
+    ...prev,
+    { type: "bot", text: "Thinking..." }
+  ]);
+
+  try {
+    const res = await fetch("http://localhost:5000/api/ai/smart", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        mode,
+        article: `${news.title}. ${news.description}`
+      })
+    });
+
+    const data = await res.json();
+
+    setAiMessages(prev => [
+      ...prev.slice(0, -1),
+      { type: "bot", text: data.result }
+    ]);
+
+  } catch (err) {
+    setAiMessages(prev => [
+      ...prev,
+      { type: "bot", text: "Error fetching AI response" }
+    ]);
+  }
+};
+
+
+
 
   // const userId = "69be294c60564a42b2e1a733"; // ✅ your user id
+const handleTranslate = async () => {
+  setAiMessages(prev => [
+    ...prev,
+    { type: "bot", text: "Translating..." }
+  ]);
 
+  try {
+    const res = await fetch("http://localhost:5000/api/ai/translate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: `${news.title}. ${news.description}`,
+        targetLang: selectedLang
+      })
+    });
+
+    const data = await res.json();
+
+    setAiMessages(prev => [
+      ...prev.slice(0, -1),
+      { type: "bot", text: data.translated || "Failed to translate" }
+    ]);
+
+  } catch (err) {
+    setAiMessages(prev => [
+      ...prev,
+      { type: "bot", text: "Error translating" }
+    ]);
+  }
+};
+
+  const handleSpeak = () => {
+  const text =
+    aiMessages[aiMessages.length - 1]?.text ||
+    `${news.title} ${news.description}`;
+
+  const speech = new SpeechSynthesisUtterance(text);
+
+  // 🔥 Get voices
+  const voices = window.speechSynthesis.getVoices();
+
+  // 🔥 Try to pick female voice
+  const femaleVoice = voices.find(v =>
+    v.name.toLowerCase().includes("female") ||
+    v.name.toLowerCase().includes("zira") ||     // Windows female
+    v.name.toLowerCase().includes("samantha") || // Mac female
+    v.name.toLowerCase().includes("google uk english female")
+  );
+
+  if (femaleVoice) {
+    speech.voice = femaleVoice;
+  }
+
+  speech.lang = "en-US";
+  speech.rate = 1;
+  speech.pitch = 1.2; // slightly softer tone
+
+  speech.onstart = () => setIsSpeaking(true);
+  speech.onend = () => setIsSpeaking(false);
+
+  window.speechSynthesis.cancel(); // stop previous
+  window.speechSynthesis.speak(speech);
+};
+
+
+const handleStop = () => {
+  window.speechSynthesis.cancel();
+  setIsSpeaking(false);
+};
+
+const handleSummarize = async () => {
+  setLoadingAI(true);
+
+  setAiMessages(prev => [
+    ...prev,
+    { type: "bot", text: "Summarizing..." }
+  ]);
+
+  try {
+    const res = await fetch("http://localhost:5000/api/ai/summarize", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        title: news.title,
+        description: news.description,
+        content: news.content || news.description,
+         url: news.url 
+      })
+    });
+
+    const data = await res.json();
+
+    setAiMessages(prev => [
+      ...prev.slice(0, -1), // remove "Summarizing..."
+      { type: "bot", text: data.summary || "Failed to summarize" }
+    ]);
+
+  } catch (err) {
+    setAiMessages(prev => [
+      ...prev,
+      { type: "bot", text: "Error summarizing" }
+    ]);
+  }
+
+  setLoadingAI(false);
+};
+
+
+const handleAskAI = async () => {
+  if (!input.trim()) return;
+
+  setAiMessages(prev => [...prev, { type: "user", text: input }]);
+
+  const res = await fetch("http://localhost:5000/api/ai/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question: input,
+      article: `${news.title} ${news.description}`
+    })
+  });
+
+  const data = await res.json();
+
+  setAiMessages(prev => [
+    ...prev,
+    { type: "bot", text: data.answer }
+  ]);
+
+  setInput("");
+};
 
 const handleCommentSubmit = async () => {
   if (!commentText.trim()) return;
@@ -255,7 +436,11 @@ console.log("ARTICLE ID:", news.articleId );
 return (
   <>
     <div 
-      onClick={handleRead}
+      oonClick={(e) => {
+    // only trigger if NOT clicking AI/chat
+    if (e.target.closest(".no-redirect")) return;
+    handleRead();
+  }}
       className="w-full h-full snap-start relative bg-black shrink-0 flex justify-center items-center overflow-hidden cursor-pointer"
     >
       
@@ -279,7 +464,7 @@ return (
       >
         
         {/* Right Panel */}
-        <div className="absolute right-4 bottom-24 md:bottom-32 flex flex-col items-center gap-6 z-10">
+      <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex flex-col items-center gap-5 z-10 no-redirect">
           
           {/* LIKE */}
           <button 
@@ -330,21 +515,223 @@ return (
             </span>
           </button>
 
-          {/* AI */}
-          <button className="flex flex-col items-center group">
-            <div className="w-12 h-12 bg-purple-600/50 rounded-full flex items-center justify-center group-hover:scale-110">
-              <FaRobot className="text-purple-200 text-2xl" />
-            </div>
-            <span className="text-purple-200 text-xs mt-1">AI</span>
-          </button>
+         <button
+  onClick={(e) => {
+  e.stopPropagation();
+  setShowAI(true);
+  handleSummarize(); // 🔥 AUTO SUMMARIZE
+}}
+  className="flex flex-col items-center group"
+>
+  <div className="w-12 h-12 bg-purple-600/50 rounded-full flex items-center justify-center group-hover:scale-110">
+    <FaRobot className="text-purple-200 text-2xl" />
+  </div>
 
-          {/* TRANSLATE */}
-          <button className="flex flex-col items-center group">
-            <div className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center group-hover:scale-110">
-              <FaGlobe className="text-white text-2xl" />
-            </div>
-            <span className="text-white text-xs mt-1">Translate</span>
-          </button>
+  <span className="text-purple-200 text-xs mt-1">AI</span>
+</button>
+{showAI && (
+  <div
+    onClick={(e) => e.stopPropagation()}
+    className="no-redirect fixed bottom-6 right-6 w-80 bg-gradient-to-br from-zinc-900 to-black border border-white/10 rounded-2xl shadow-2xl z-50 flex flex-col backdrop-blur-lg"
+  >
+
+    {/* Header */}
+    <div className="flex justify-between items-center p-3 border-b border-white/10">
+      <span className="text-sm font-semibold flex items-center gap-2">
+        🤖 AI Assistant
+      </span>
+      <button 
+        onClick={() => setShowAI(false)} 
+        className="text-gray-400 hover:text-white"
+      >
+        ✖
+      </button>
+    </div>
+
+
+    <div className="flex justify-around p-2 border-b border-white/10 text-xs">
+
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      handleSmartAI("explain");
+    }}
+    className="text-purple-300 hover:underline"
+  >
+    🧠 Explain
+  </button>
+
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      handleSmartAI("future");
+    }}
+    className="text-green-300 hover:underline"
+  >
+    🔮 What Next
+  </button>
+
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      handleSmartAI("keypoints");
+    }}
+    className="text-yellow-300 hover:underline"
+  >
+    ⚡ Key Points
+  </button>
+
+</div>
+
+
+<div className="flex gap-2 p-2 border-b border-white/10">
+  <select
+    value={selectedLang}
+    onChange={(e) => setSelectedLang(e.target.value)}
+    className="bg-zinc-800 text-white text-xs px-2 py-1 rounded"
+  >
+    <option>Hindi</option>
+    <option>Telugu</option>
+    <option>Tamil</option>
+    <option>Kannada</option>
+    <option>English</option>
+  </select>
+
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      handleTranslate();
+    }}
+    className="text-blue-400 text-xs"
+  >
+    Translate
+  </button>
+</div>
+
+
+    {/* Messages */}
+    <div className="p-3 h-52 overflow-y-auto text-sm space-y-2">
+      {aiMessages.length === 0 && (
+        <p className="text-gray-400 text-center text-xs">
+          Ask anything about this news...
+        </p>
+      )}
+
+     {aiMessages.map((msg, i) => (
+  <div key={i} className={msg.type === "user" ? "text-right" : "text-left"}>
+    
+    <div
+      className={`inline-block px-3 py-2 rounded-lg whitespace-pre-line ${
+        msg.type === "user"
+          ? "bg-purple-600 text-white"
+          : "bg-zinc-800 text-gray-300"
+      }`}
+    >
+
+      {/* ✅ FIXED BULLET RENDER */}
+      {msg.type === "bot" ? (
+        <ul className="list-disc pl-4 space-y-2 text-sm leading-relaxed">
+          {msg.text
+            .split("\n")
+            .filter(line => line.trim() !== "")
+            .map((line, index) => (
+              <li key={index}>
+                {line.replace(/^[-•]\s*/, "")}
+              </li>
+            ))}
+        </ul>
+      ) : (
+        msg.text
+      )}
+
+    </div>
+
+  </div>
+))}
+    </div>
+
+    {/* Input */}
+    <div className="flex border-t border-white/10">
+      <input
+        value={input}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Ask something..."
+        className="flex-1 p-2 bg-transparent text-sm outline-none text-white"
+      />
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleAskAI();
+        }}
+        className="px-3 text-purple-400 hover:text-purple-300"
+      >
+        ➤
+      </button>
+    </div>
+
+    {/* Actions */}
+    <div className="flex justify-between text-xs p-2 border-t border-white/10">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleSummarize();
+        }}
+        className="text-purple-400 hover:underline"
+      >
+        ✨ Summarize
+      </button>
+
+      <button
+        className="text-gray-400 hover:text-white"
+        onClick={(e) => {
+          e.stopPropagation();
+          setAiMessages([]);
+        }}
+      >
+        Clear
+      </button>
+    </div>
+  </div>
+
+  
+)}
+          {/* AI Output */}
+<button
+  onClick={(e) => {
+    e.stopPropagation();
+    isSpeaking ? handleStop() : handleSpeak();
+  }}
+  className="flex flex-col items-center group"
+>
+  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition ${
+    isSpeaking
+      ? "bg-red-500/70"
+      : "bg-green-600/50"
+  }`}>
+    {isSpeaking ? "⏹" : "🔊"}
+  </div>
+
+  <span className="text-xs mt-1 text-white">
+    {isSpeaking ? "Stop" : "Listen"}
+  </span>
+</button>
+
+
+         <button
+  onClick={(e) => {
+    e.stopPropagation();
+    setShowAI(true);
+    handleTranslate();
+  }}
+  className="flex flex-col items-center group"
+>
+  <div className="w-12 h-12 bg-blue-600/50 rounded-full flex items-center justify-center group-hover:scale-110">
+    <FaGlobe className="text-blue-200 text-2xl" />
+  </div>
+
+  <span className="text-blue-200 text-xs mt-1">Translate</span>
+</button>
 
           {/* SHARE */}
          <button 
@@ -354,7 +741,7 @@ return (
   <div className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center group-hover:scale-110">
     <FaShare className="text-white text-2xl" />
   </div>
-  <span className="text-green-400 text-xs mt-1">
+  <span className="text-white text-xs mt-1">
   {copied ? "Copied!" : "Share"}
 </span>
 </button>

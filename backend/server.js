@@ -8,6 +8,7 @@ const connectDB = require('./config/db');
 const newsRoutes = require("./routes/news");
 const recommendRoutes = require("./routes/recommend");
 const activityRoutes = require("./routes/userActivity");
+const aiRoutes = require("./routes/ai");
 
 // Connect to database
 connectDB();
@@ -40,6 +41,7 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 app.use("/api/activity", activityRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Routes
 const authRouter = require('./routes/authRoutes');

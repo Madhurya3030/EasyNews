@@ -55,7 +55,7 @@ router.post("/read", protect, async (req, res) => {
           url: url || ""
         }
       },
-      { upsert: true, new: true }
+      { upsert: true,returnDocument: "after"}
     );
 
     // Sync User readHistory
